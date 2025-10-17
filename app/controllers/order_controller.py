@@ -22,14 +22,14 @@ class OrderController:
         data = request.get_json()
 
         # Validate required fields
-        required_fields = ['user_id', 'tshirt_id', 'quantity', 'shipping_address']
+        required_fields = ['user_id', 'product_id', 'quantity', 'shipping_address']
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
         order = OrderService.create_order(
             data['user_id'],
-            data['tshirt_id'],
+            data['product_id'],
             data['quantity'],
             data['shipping_address']
         )

@@ -28,7 +28,7 @@ class AuthService:
 
         # Create access token
         access_token = create_access_token(
-            identity=user.id,
+            identity=str(user.id),  # Convert user.id to string
             additional_claims={'is_admin': user.role == 'admin'}
         )
 

@@ -1,6 +1,6 @@
+# app/models/user.py
 from app.extensions import db
 from app.utils.password_helper import hash_password
-
 
 class User(db.Model):
     __tablename__ = 'users'
@@ -8,13 +8,13 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(512), nullable=False)
     role = db.Column(db.String(20), default='customer')
     preferences = db.Column(db.JSON, default={})
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
-    # relationships
-    orders = db.relationship('Order', backref='user', lazy=True)
+    # Relationships
+    orders = db.relationship("Order", back_populates="user", cascade="all, delete-orphan")
     payments = db.relationship("Payment", back_populates="user", cascade="all, delete-orphan")
 
     def set_password(self, password):

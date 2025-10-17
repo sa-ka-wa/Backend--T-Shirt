@@ -1,4 +1,4 @@
-from flask import Blueprint
+from flask import Blueprint, jsonify, request
 from app.controllers.user_controller import UserController
 from app.utils.jwt_helper import token_required
 
@@ -8,12 +8,14 @@ user_bp = Blueprint('users', __name__, url_prefix="/api/users")
 # Create (Register a new user) → no token needed
 @user_bp.route("", methods=['POST'])
 def create_user():
+    print(request.headers)
     return UserController.create_user()
 
 # Read all users (requires token)
 @user_bp.route("", methods=['GET'])
 @token_required
 def get_users():
+    print(request.headers)
     return UserController.get_users()
 
 # Read single user

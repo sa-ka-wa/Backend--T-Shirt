@@ -23,3 +23,11 @@ def create_payment():
 @token_required
 def update_payment(payment_id):
     return PaymentController.update_payment(payment_id)
+
+@payment_bp.route('/mpesa/callback', methods=['POST'])
+def mpesa_callback():
+    """
+    This is called by Safaricom when the M-Pesa transaction finishes.
+    No authentication is required.
+    """
+    return PaymentController.mpesa_callback()

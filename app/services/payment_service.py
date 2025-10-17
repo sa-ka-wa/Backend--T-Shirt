@@ -12,11 +12,12 @@ class PaymentService:
         return Payment.query.get(payment_id)
 
     @staticmethod
-    def create_payment(order_id, amount, payment_method, status='pending'):
+    def create_payment(user_id,order_id, amount, payment_method, status='pending'):
         payment = Payment(
+            user_id=user_id,
             order_id=order_id,
             amount=amount,
-            payment_method=payment_method,
+            method=payment_method,
             status=status
         )
 

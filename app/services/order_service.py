@@ -1,6 +1,6 @@
 from app.extensions import db
 from app.models.order import Order
-from app.models.tshirt import TShirt
+from app.models.product import Product
 
 
 class OrderService:
@@ -13,17 +13,17 @@ class OrderService:
         return Order.query.get(order_id)
 
     @staticmethod
-    def create_order(user_id, tshirt_id, quantity, shipping_address):
+    def create_order(user_id, product_id, quantity, shipping_address):
         # Get tshirt price
-        tshirt = TShirt.query.get(tshirt_id)
-        if not tshirt:
+        product = Product.query.get(product_id)
+        if not product:
             return None
 
-        total_amount = tshirt.price * quantity
+        total_amount = product.price * quantity
 
         order = Order(
             user_id=user_id,
-            tshirt_id=tshirt_id,
+            product_id=product_id,
             quantity=quantity,
             total_amount=total_amount,
             shipping_address=shipping_address
