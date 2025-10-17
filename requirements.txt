@@ -10,7 +10,7 @@ gunicorn==23.0.0
 
 # --- Database & ORM ---
 SQLAlchemy==2.0.36
-sqlalchemy-serializer==1.4.22
+sqlalchemy-serializer==1.4.24
 psycopg2-binary==2.9.9
 alembic==1.16.1
 
