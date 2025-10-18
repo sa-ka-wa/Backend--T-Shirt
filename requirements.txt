@@ -7,7 +7,7 @@ click==8.2.1
 
 # --- Database & Migrations ---
 Flask-SQLAlchemy==3.1.1
-SQLAlchemy==2.0.30
+SQLAlchemy==2.0.29
 psycopg2-binary==2.9.9
 Flask-Migrate==4.1.0
 alembic==1.16.4
@@ -17,7 +17,7 @@ Flask-RESTful==0.3.10
 marshmallow==3.21.1
 flask-marshmallow==0.15.0
 marshmallow-sqlalchemy==0.29.0
-# REMOVED: sqlalchemy-serializer>=1.5.0
+sqlalchemy-serializer==1.4.22
 
 # --- Security & Utilities ---
 python-dotenv==1.0.0
