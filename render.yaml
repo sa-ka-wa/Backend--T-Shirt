@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: your-app-name
+    name: your-backend_app-name
     env: python
     plan: free
     pythonVersion: "3.12.12"
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn backend_app:backend_app
