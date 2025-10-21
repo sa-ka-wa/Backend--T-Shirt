@@ -30,6 +30,7 @@ fpdf2==2.7.7
 typing_extensions==4.12.2
 pytz==2024.2
 tzdata==2025.2
+requests==2.32.3
 
 # --- Production Server ---
 gunicorn==23.0.0
