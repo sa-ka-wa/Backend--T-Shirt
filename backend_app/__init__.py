@@ -37,4 +37,28 @@ def create_app(config_class=Config):
     app.register_blueprint(user_bp, url_prefix='/api/users')
     app.register_blueprint(style_bp, url_prefix='/api/themes')
 
+    # ✅ Auto-create tables if they don't exist
+    with app.app_context():
+        from backend_app import models
+        db.create_all()
+        print("✅ Database tables created (or already exist)")
+
+    @app.route("/routes", methods=["GET"])
+    def list_routes():
+        """
+        Lists all active routes in the Flask app.
+        """
+        output = []
+        for rule in app.url_map.iter_rules():
+            # Skip static routes unless you want them
+            if rule.endpoint != 'static':
+                methods = ",".join(rule.methods)
+                output.append({
+                    "endpoint": rule.endpoint,
+                    "methods": methods,
+                    "url": str(rule)
+                })
+        return {"routes": output}, 200
+
+
     return app
