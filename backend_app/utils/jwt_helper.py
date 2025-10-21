@@ -49,3 +49,17 @@ def get_current_user_id():
     except Exception as e:
         print("JWT Error:", e)
         return None
+def get_current_user():
+    """
+    Returns the full User object of the currently authenticated user.
+    """
+    try:
+        verify_jwt_in_request()
+        user_id = get_jwt_identity()
+        if not user_id:
+            return None
+        user = User.query.get(user_id)
+        return user
+    except Exception as e:
+        print("JWT Error:", e)
+        return None

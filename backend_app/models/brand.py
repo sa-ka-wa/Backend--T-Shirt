@@ -10,12 +10,14 @@ class Brand(db.Model):
     logo_url = db.Column(db.String(500))
     website = db.Column(db.String(200))
     established_year = db.Column(db.Integer)
+    subdomain = db.Column(db.String(50), nullable=True, unique=True)
     category = db.Column(db.String(100), nullable=False)  # e.g., "clothing", "lifestyle", "sports"
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     is_active = db.Column(db.Boolean, default=True)
 
     # Relationship with TShirts
     # tshirts = db.relationship("TShirt", back_populates="brand", cascade="all, delete-orphan")
+    users = db.relationship('User', back_populates='brand', cascade='all, delete-orphan')
     products = db.relationship("Product", back_populates="brand", cascade="all, delete-orphan")
 
     def to_dict(self):
@@ -32,3 +34,9 @@ class Brand(db.Model):
             # 'tshirts_count': len(self.tshirts) if self.tshirts else 0,
             'products_count': len(self.products) if self.products else 0
         }
+        if include_users:
+            data["users"] = [user.to_dict() for user in self.users]
+        if include_products:
+            data["products"] = [product.to_dict() for product in self.products]
+        return data
+

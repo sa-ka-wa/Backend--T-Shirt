@@ -14,6 +14,8 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
     # Relationships
+    brand_id = db.Column(db.Integer, db.ForeignKey('brands.id'), nullable=False)
+    brand = db.relationship('Brand', back_populates='users')
     orders = db.relationship("Order", back_populates="user", cascade="all, delete-orphan")
     payments = db.relationship("Payment", back_populates="user", cascade="all, delete-orphan")
 
@@ -27,5 +29,7 @@ class User(db.Model):
             'email': self.email,
             'role': self.role,
             'preferences': self.preferences,
+            'brand_id': self.brand_id,
+            'brand_name': self.brand.name if self.brand else None,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }

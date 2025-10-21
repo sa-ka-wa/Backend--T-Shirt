@@ -2,13 +2,16 @@ from flask import request, jsonify
 from backend_app.extensions import db
 from backend_app.models.order import Order
 from backend_app.services.order_service import OrderService
+from backend_app.models.user import User
+from backend_app.utils.jwt_helper import get_current_user
+from backend_app.utils.brand_filter import brand_filtered_query
 
 
 class OrderController:
     @staticmethod
     def get_orders():
-        orders = OrderService.get_all_orders()
-        return jsonify([order.to_dict() for order in orders])
+        orders = brand_filtered_query(Order).all()
+        return jsonify([order.to_dict() for order in orders]), 200
 
     @staticmethod
     def get_order(order_id):
@@ -33,15 +36,20 @@ class OrderController:
             data['quantity'],
             data['shipping_address']
         )
+        if not order:
+            return jsonify({'error': 'Invalid product ID'}), 400
+
 
         return jsonify(order.to_dict()), 201
 
     @staticmethod
     def update_order(order_id):
         data = request.get_json()
-        order = OrderService.update_order(order_id, data)
+        if not data:
+            return jsonify({'error': 'Missing update data'}), 400
 
+        order = OrderService.update_order(order_id, data)
         if not order:
             return jsonify({'error': 'Order not found'}), 404
 
-        return jsonify(order.to_dict())
+        return jsonify(order.to_dict()), 200

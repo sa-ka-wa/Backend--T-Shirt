@@ -5,6 +5,7 @@ from backend_app.extensions import db
 from backend_app.models.user import User
 from backend_app.services.user_service import UserService
 from backend_app.utils.password_helper import hash_password
+from backend_app.utils.brand_helper import get_current_brand
 
 
 class UserController:
@@ -16,10 +17,6 @@ class UserController:
         if not data.get("name") or not data.get("email") or not data.get("password"):
             return jsonify({"error": "Name, email, and password are required"}), 400
 
-        # check if email exists
-        if User.query.filter_by(email=data["email"]).first():
-            return jsonify({"error": "Email already exists"}), 400
-
         # create new user
         user = User(
             name=data["name"],
@@ -27,6 +24,29 @@ class UserController:
             role=data.get("role", "customer"),
             preferences=data.get("preferences", {})
         )
+
+        # get brand from subdomain only if needed
+        brand = get_current_brand()
+
+        # Assign brand
+        brand_id = data.get("brand_id")  # check JSON first
+        if user.role == "super_admin":
+            # Super admin can use root brand (1) or provided brand
+            user.brand_id = brand_id or 1
+        else:
+            if brand_id:
+                user.brand_id = brand_id
+            else:
+                # fallback to subdomain brand
+                brand = get_current_brand()
+                if not brand:
+                    return jsonify({"error": "Invalid or missing brand"}), 400
+                user.brand_id = brand.id
+
+        # check if email exists within the assigned brand
+        if User.query.filter_by(email=user.email, brand_id=user.brand_id).first():
+            return jsonify({"error": "Email already exists for this brand"}), 400
+
         user.set_password(data["password"])  # hashes password
 
         db.session.add(user)
