@@ -20,14 +20,15 @@ class Brand(db.Model):
     users = db.relationship('User', back_populates='brand', cascade='all, delete-orphan')
     products = db.relationship("Product", back_populates="brand", cascade="all, delete-orphan")
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_users=False, include_products=False):
+        data =  {
             'id': self.id,
             'name': self.name,
             'description': self.description,
             'logo_url': self.logo_url,
             'website': self.website,
             'established_year': self.established_year,
+            'subdomain': self.subdomain,
             'category': self.category,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'is_active': self.is_active,
@@ -36,7 +37,9 @@ class Brand(db.Model):
         }
         if include_users:
             data["users"] = [user.to_dict() for user in self.users]
+
         if include_products:
             data["products"] = [product.to_dict() for product in self.products]
+
         return data
 

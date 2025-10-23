@@ -9,3 +9,13 @@ def brand_filtered_query(model):
     if user.role != "super_admin":
         query = query.join(User).filter(User.brand_id == user.brand_id)
     return query
+
+    # Admin → sees only within their brand
+    if user.role == "admin" and user.brand_id:
+        return query.join(User).filter(User.brand_id == user.brand_id)
+
+    # Customer → sees only their own records (if model has user_id)
+    if user.role == "customer" and hasattr(model, "user_id"):
+        return query.filter(model.user_id == user.id)
+
+    return query

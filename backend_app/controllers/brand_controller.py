@@ -22,9 +22,19 @@ class BrandController:
         return jsonify(brand.to_dict())
 
     @staticmethod
-    def create_brand():
-        """Create a new brand (admin only)"""
+    def create_brand(current_user):
+
+        """Restricted: Only super_admin can create a brand"""
+        if current_user.role != 'super_admin':
+            return jsonify({'error': 'Unauthorized: Only super_admin can create brands'}), 403
+
         data = request.get_json()
+        # required_fields = ['name', 'category']
+        # for field in required_fields:
+        #     if field not in data:
+        #         return jsonify({'error': f'Missing required field: {field}'}), 400
+        #
+        # data = request.get_json()
 
         # Validate required fields
         required_fields = ['name', 'category']
@@ -33,6 +43,7 @@ class BrandController:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
         brand = BrandService.create_brand(
+            current_user,
             data['name'],
             data['category'],
             data.get('description'),
@@ -44,10 +55,13 @@ class BrandController:
         return jsonify(brand.to_dict()), 201
 
     @staticmethod
-    def update_brand(brand_id):
-        """Update a brand (admin only)"""
+    def update_brand(current_user, brand_id):
+        """Restricted: Only super_admin can update a brand"""
+        if current_user.role != 'super_admin':
+            return jsonify({'error': 'Unauthorized: Only super_admin can update brands'}), 403
+
         data = request.get_json()
-        brand = BrandService.update_brand(brand_id, data)
+        brand = BrandService.update_brand(current_user,brand_id, data)
 
         if not brand:
             return jsonify({'error': 'Brand not found'}), 404
@@ -55,9 +69,12 @@ class BrandController:
         return jsonify(brand.to_dict())
 
     @staticmethod
-    def delete_brand(brand_id):
-        """Delete a brand (admin only)"""
-        success = BrandService.delete_brand(brand_id)
+    def delete_brand(current_user, brand_id):
+        """Restricted: Only super_admin can delete a brand"""
+        if current_user.role != 'super_admin':
+            return jsonify({'error': 'Unauthorized: Only super_admin can delete brands'}), 403
+
+        success = BrandService.delete_brand(current_user,brand_id)
 
         if not success:
             return jsonify({'error': 'Brand not found'}), 404

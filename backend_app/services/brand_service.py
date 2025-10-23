@@ -16,7 +16,12 @@ class BrandService:
         return Brand.query.filter_by(id=brand_id, is_active=True).first()
 
     @staticmethod
-    def create_brand(name, category, description=None, logo_url=None, website=None, established_year=None):
+    def create_brand(current_user,name, category, description=None, logo_url=None, website=None, established_year=None):
+        """Create a new brand (super_admin only)."""
+        if current_user.role != 'super_admin':
+            raise PermissionError("Unauthorized: Only super_admin can create a brand.")
+
+
         brand = Brand(
             name=name,
             description=description,
@@ -30,7 +35,12 @@ class BrandService:
         return brand
 
     @staticmethod
-    def update_brand(brand_id, data):
+    def update_brand(current_user,brand_id, data):
+        """Update a brand (super_admin only)."""
+        if current_user.role != 'super_admin':
+            raise PermissionError("Unauthorized: Only super_admin can update a brand.")
+
+
         brand = BrandService.get_brand_by_id(brand_id)
         if not brand:
             return None
@@ -43,7 +53,12 @@ class BrandService:
         return brand
 
     @staticmethod
-    def delete_brand(brand_id):
+    def delete_brand(current_user,brand_id):
+        """Soft delete a brand (super_admin only)."""
+        if current_user.role != 'super_admin':
+            raise PermissionError("Unauthorized: Only super_admin can delete a brand.")
+
+
         brand = BrandService.get_brand_by_id(brand_id)
         if not brand:
             return False
