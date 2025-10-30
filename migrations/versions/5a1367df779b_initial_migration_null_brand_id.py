@@ -1,7 +1,7 @@
 """initial migration null brand-id
 
 Revision ID: 5a1367df779b
-Revises: 
+Revises:
 Create Date: 2025-10-21 15:01:27.983819
 
 """
