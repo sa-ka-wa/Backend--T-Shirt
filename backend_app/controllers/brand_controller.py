@@ -29,12 +29,11 @@ class BrandController:
             return jsonify({'error': 'Unauthorized: Only super_admin can create brands'}), 403
 
         data = request.get_json()
-        # required_fields = ['name', 'category']
-        # for field in required_fields:
-        #     if field not in data:
-        #         return jsonify({'error': f'Missing required field: {field}'}), 400
-        #
-        # data = request.get_json()
+        name = data.get("name")
+
+        # generate subdomain safely
+        subdomain = name.lower().replace(" ", "-")
+        website = f"https://{subdomain}.lvh.me:3004"
 
         # Validate required fields
         required_fields = ['name', 'category']
@@ -43,13 +42,13 @@ class BrandController:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
 
         brand = BrandService.create_brand(
-            current_user,
-            data['name'],
-            data['category'],
-            data.get('description'),
-            data.get('logo_url'),
-            data.get('website'),
-            data.get('established_year')
+            name=name,
+            description=data.get("description"),
+            established_year=data.get("established_year"),
+            logo_url=data.get("logo_url"),
+            category=data.get("category"),
+            website=website,
+            subdomain=subdomain
         )
 
         return jsonify(brand.to_dict()), 201
@@ -90,3 +89,54 @@ class BrandController:
             return jsonify({'error': 'Brand not found'}), 404
 
         return jsonify([tshirt.to_dict() for tshirt in tshirts])
+    @staticmethod
+    def get_brand_by_subdomain():
+        subdomain = request.args.get("subdomain")
+        if not subdomain:
+            return jsonify({"error": "Missing subdomain parameter"}), 400
+
+            # Try to find the brand by subdomain
+        brand = Brand.query.filter_by(subdomain=subdomain).first()
+
+        # If brand not found by subdomain, check if any brand has NULL subdomain and matches name
+        if not brand:
+            # Search for a brand whose name lowercased with hyphens matches requested subdomain
+            candidate = Brand.query.filter_by(subdomain=None).all()
+            for b in candidate:
+                generated = b.name.lower().replace(" ", "-")
+                if generated == subdomain:
+                    # Update the brand with the subdomain
+                    b.subdomain = subdomain
+                    db.session.commit()
+                    brand = b
+                    break
+
+        if not brand:
+            return jsonify({"error": f"Brand not found for subdomain '{subdomain}'"}), 404
+
+        return jsonify(brand.to_dict()), 200
+    @staticmethod
+    def update_subdomain():
+        data = request.get_json()
+        subdomain = data.get("subdomain")
+
+        if not subdomain:
+            return jsonify({"error": "Subdomain is required"}), 400
+
+        # Check if brand exists for this subdomain
+        brand = Brand.query.filter_by(subdomain=subdomain).first()
+        if brand:
+            return jsonify({"message": "Subdomain already exists", "brand": brand.to_dict()}), 200
+
+        # Otherwise, create new brand entry or log it
+        new_brand = Brand(name=subdomain.capitalize(), subdomain=subdomain)
+        new_brand.category = data.get("category", "general")
+
+
+        db.session.add(new_brand)
+        db.session.commit()
+
+        return jsonify({
+            "message": f"New brand '{subdomain}' added successfully",
+            "brand": new_brand.to_dict()
+        }), 201

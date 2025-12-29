@@ -12,3 +12,7 @@ class Config:
         os.environ.get('DATABASE_URL') or
         'postgresql://postgres:password@localhost:5432/your_db_name'
     )
+    # File upload configuration
+    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max file size
+    UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+    ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}

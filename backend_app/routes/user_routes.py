@@ -16,7 +16,7 @@ def create_user():
 @user_bp.route("", methods=['GET'])
 @token_required
 @role_required('admin', 'super_admin')
-def get_users(current_user):
+def get_users(current_user, *args, **kwargs):
     print(request.headers)
     return UserController.get_users(current_user)
 
@@ -24,14 +24,21 @@ def get_users(current_user):
 @user_bp.route("/<int:user_id>", methods=['GET'])
 @token_required
 @role_required('admin', 'super_admin')
-def get_user(current_user, user_id):
-    return UserController.get_user(current_user, user_id)
+def get_user(current_user):
+    return UserController.get_user(current_user)
 
 # Update user
 @user_bp.route("/<int:user_id>", methods=['PUT'])
 @token_required
 def update_user(current_user,user_id):
     return UserController.update_user(current_user,user_id)
+
+# Upload user image (avatar or banner)
+@user_bp.route("/<int:user_id>/upload-image", methods=['POST'])
+@token_required
+def upload_user_image(current_user, user_id):
+    return UserController.upload_image(current_user, user_id)
+
 
 # Delete user
 @user_bp.route("/<int:user_id>", methods=['DELETE'])

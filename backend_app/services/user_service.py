@@ -17,8 +17,12 @@ class UserService:
         if not user:
             return None
 
+        # Define allowed fields for update
+        allowed_fields = ['name', 'email', 'role', 'preferences', 'bio',
+                         'location', 'website', 'phone', 'avatar_url', 'banner_url']
+
         for key, value in data.items():
-            if hasattr(user, key) and key != 'id':
+            if hasattr(user, key) and key in allowed_fields:
                 setattr(user, key, value)
 
         db.session.commit()

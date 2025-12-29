@@ -6,9 +6,11 @@ class Brand(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
+    slug = db.Column(db.String(100), nullable=True, unique=True)
     description = db.Column(db.Text)
     logo_url = db.Column(db.String(500))
     website = db.Column(db.String(200))
+    contact_email = db.Column(db.String(100))
     established_year = db.Column(db.Integer)
     subdomain = db.Column(db.String(50), nullable=True, unique=True)
     category = db.Column(db.String(100), nullable=False)  # e.g., "clothing", "lifestyle", "sports"
@@ -24,9 +26,11 @@ class Brand(db.Model):
         data =  {
             'id': self.id,
             'name': self.name,
+            'slug': self.slug,
             'description': self.description,
             'logo_url': self.logo_url,
             'website': self.website,
+            'contact_email': self.contact_email,
             'established_year': self.established_year,
             'subdomain': self.subdomain,
             'category': self.category,

@@ -13,11 +13,21 @@ class User(db.Model):
     preferences = db.Column(db.JSON, default={})
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
+    # New profile fields
+    bio = db.Column(db.Text)
+    location = db.Column(db.String(200))
+    website = db.Column(db.String(500))
+    phone = db.Column(db.String(20))
+    avatar_url = db.Column(db.String(500))
+    banner_url = db.Column(db.String(500))
+
+
     # Relationships
     brand_id = db.Column(db.Integer, db.ForeignKey('brands.id'), nullable=False)
     brand = db.relationship('Brand', back_populates='users')
     orders = db.relationship("Order", back_populates="user", cascade="all, delete-orphan")
     payments = db.relationship("Payment", back_populates="user", cascade="all, delete-orphan")
+    cart = db.relationship('Cart', back_populates='user', uselist=False, cascade='all, delete-orphan')
 
     def set_password(self, password):
         self.password_hash = hash_password(password)
@@ -31,5 +41,12 @@ class User(db.Model):
             'preferences': self.preferences,
             'brand_id': self.brand_id,
             'brand_name': self.brand.name if self.brand else None,
-            'created_at': self.created_at.isoformat() if self.created_at else None
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            # New fields
+            'bio': self.bio,
+            'location': self.location,
+            'website': self.website,
+            'phone': self.phone,
+            'avatar_url': self.avatar_url,
+            'banner_url': self.banner_url
         }

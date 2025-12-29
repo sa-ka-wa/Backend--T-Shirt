@@ -1,4 +1,5 @@
 from flask import request, jsonify
+from sqlalchemy.orm import joinedload,contains_eager
 from backend_app.extensions import db
 from backend_app.models.product import Product
 from backend_app.services.product_service import ProductService
@@ -14,6 +15,8 @@ class ProductController:
         style_tag = request.args.get('style')
         brand_id = request.args.get('brand_id')
         search = request.args.get('search')
+        page = request.args.get('page', type=int)  # optional
+        limit = request.args.get('limit', type=int)  # optional
 
         # ✅ Brand-filtered query (auto restricts admin by their brand)
         query = brand_filtered_query(Product).filter_by(is_active=True)
@@ -34,16 +37,46 @@ class ProductController:
         if brand_id:
             query = query.filter_by(brand_id=brand_id)
 
-        products = query.all()
-        return jsonify([product.to_dict() for product in products]), 200
+        # Ensure brand data is loaded
+        query = query.options(contains_eager(Product.brand))
+
+        # Apply pagination only if page & limit are provided
+        if page and limit:
+            offset = (page - 1) * limit
+            products = query.offset(offset).limit(limit).all()
+        else:
+            products = query.all()  # return all products
+
+        # Include brand in response
+        products_data = []
+        for product in products:
+            product_dict = product.to_dict()
+            if 'brand' not in product_dict and product.brand:
+                product_dict['brand'] = {
+                    'id': product.brand.id,
+                    'name': product.brand.name,
+                    'slug': getattr(product.brand, 'slug', None)
+                }
+            products_data.append(product_dict)
+
+        return jsonify(products_data), 200
 
     @staticmethod
     def get_product(product_id):
         """Get a specific product by ID"""
-        product = ProductService.get_product_by_id(product_id)
+        # ⚠️ FIX: Use joinedload when fetching single product
+        product = Product.query.options(joinedload(Product.brand)).get(product_id)
         if not product:
             return jsonify({'error': 'Product not found'}), 404
-        return jsonify(product.to_dict()), 200
+
+        product_dict = product.to_dict()
+        if 'brand' not in product_dict and product.brand:
+            product_dict['brand'] = {
+                'id': product.brand.id,
+                'name': product.brand.name,
+                'slug': getattr(product.brand, 'slug', None)
+            }
+        return jsonify(product_dict), 200
 
     @staticmethod
     def create_product(current_user):
@@ -146,3 +179,11 @@ class ProductController:
 
         updated_product = ProductService.update_stock(current_user,product_id, data['stock_quantity'])
         return jsonify(updated_product.to_dict()), 200
+
+    @staticmethod
+    def get_products_by_brand(brand_id):
+        products = Product.query.filter_by(brand_id=brand_id).all()
+
+        return jsonify([
+            product.to_dict() for product in products
+        ]), 200

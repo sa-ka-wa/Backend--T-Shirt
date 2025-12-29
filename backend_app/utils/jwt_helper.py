@@ -1,4 +1,4 @@
-from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt
+from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity, get_jwt,create_access_token
 from functools import wraps
 from flask import jsonify
 from backend_app.models.user import User
@@ -7,11 +7,17 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         try:
-            verify_jwt_in_request()  # Just check validity — don't pass user
+            verify_jwt_in_request()
+            user_id = get_jwt_identity()
+            current_user = User.query.get(user_id)
+
+            if not current_user:
+                return jsonify({'error': 'User not found'}), 404
+
         except Exception as e:
             print("JWT error:", e)
             return jsonify({'error': 'Valid JWT token is missing'}), 401
-        return f(*args, **kwargs)
+        return f(current_user,*args, **kwargs)
     return decorated
 
 
@@ -63,3 +69,10 @@ def get_current_user():
     except Exception as e:
         print("JWT Error:", e)
         return None
+
+def generate_token(identity):
+    """
+    Generates a JWT access token for the given user identity.
+    Includes 'is_admin' claim if the user has admin role.
+    """
+    return create_access_token(identity=identity)

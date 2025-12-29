@@ -18,7 +18,7 @@ def get_product(product_id):
 @token_required
 # @admin_required
 @role_required('admin', 'super_admin')
-def create_product(current_user):
+def create_product(current_user, *args, **kwargs):
     return ProductController.create_product(current_user)
 
 @product_bp.route('/<int:product_id>', methods=['PUT'])
@@ -41,3 +41,7 @@ def delete_product(current_user, product_id):
 @role_required('admin', 'super_admin')
 def update_stock(current_user, product_id):
     return ProductController.update_stock(current_user,product_id)
+
+@product_bp.route('/brand/<int:brand_id>', methods=['GET'])
+def get_products_by_brand(brand_id):
+    return ProductController.get_products_by_brand(brand_id)
