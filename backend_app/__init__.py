@@ -24,6 +24,7 @@ def create_app(config_class=Config):
                 "http://prolific.lvh.me:3004",
                 "http://lvh.me:3003",
                 "http://doktari.lvh.me:3002",
+            "https://doktari-frontend.vercel.app",
                 "http://admin.lvh.me:3001",
                 "http://user.lvh.me:3003",
                 "http://localhost:3001",

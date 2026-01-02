@@ -26,7 +26,7 @@ class Payment(db.Model):
     card_brand = db.Column(db.String(50))
     refund_amount = db.Column(db.Float, default=0.0)
     refund_reason = db.Column(db.Text)
-    metadata = db.Column(db.JSON)  # Additional payment data
+    meta_info = db.Column(db.JSON)  # Additional payment data
     initiated_at = db.Column(db.DateTime, default=datetime.utcnow)
     completed_at = db.Column(db.DateTime)
     failed_at = db.Column(db.DateTime)
@@ -69,7 +69,7 @@ class Payment(db.Model):
             'card_brand': self.card_brand,
             'refund_amount': self.refund_amount,
             'refund_reason': self.refund_reason,
-            'metadata': self.metadata,
+            'meta_info': self.metadata,
             'initiated_at': self.initiated_at.isoformat() if self.initiated_at else None,
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'failed_at': self.failed_at.isoformat() if self.failed_at else None

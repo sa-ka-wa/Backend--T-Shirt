@@ -1,236 +1,304 @@
-import requests
-import json
-import base64
-from datetime import datetime
+from flask import request, jsonify
 from backend_app.extensions import db
 from backend_app.models.payment import Payment
 from backend_app.models.order import Order
+from backend_app.services.payment_service import PaymentService
+from backend_app.utils.jwt_helper import get_current_user, get_current_user_id
+from datetime import datetime
 import logging
-import os
+import json
 
 logger = logging.getLogger(__name__)
 
 
-class MpesaService:
-    def __init__(self, env='sandbox'):
-        self.env = env
-        self.base_url = 'https://sandbox.safaricom.co.ke' if env == 'sandbox' else 'https://api.safaricom.co.ke'
-
-        # Load credentials from environment variables
-        self.consumer_key = os.getenv('MPESA_CONSUMER_KEY')
-        self.consumer_secret = os.getenv('MPESA_CONSUMER_SECRET')
-        self.shortcode = os.getenv('MPESA_SHORTCODE')
-        self.passkey = os.getenv('MPESA_PASSKEY')
-        self.callback_url = os.getenv('MPESA_CALLBACK_URL')
-
-        if not all([self.consumer_key, self.consumer_secret, self.shortcode, self.passkey]):
-            logger.warning("M-Pesa credentials not fully configured")
-
-    def get_access_token(self):
-        """Get M-Pesa access token"""
+class PaymentController:
+    @staticmethod
+    def get_payments(current_user):
+        """Get all payments for current user"""
         try:
-            # Encode credentials
-            credentials = f"{self.consumer_key}:{self.consumer_secret}"
-            encoded_credentials = base64.b64encode(credentials.encode()).decode()
+            current_user = get_current_user()
+            if not current_user:
+                return jsonify({'error': 'Unauthorized'}), 401
 
-            # Request token
-            headers = {
-                'Authorization': f'Basic {encoded_credentials}'
-            }
+            # Get query parameters
+            status = request.args.get('status')
+            order_id = request.args.get('order_id')
+            limit = request.args.get('limit', 50, type=int)
+            offset = request.args.get('offset', 0, type=int)
 
-            response = requests.get(
-                f'{self.base_url}/oauth/v1/generate?grant_type=client_credentials',
-                headers=headers,
-                timeout=30
-            )
+            payment_service = PaymentService()
 
-            if response.status_code == 200:
-                token_data = response.json()
-                return token_data.get('access_token')
+            if current_user.role == 'customer':
+                result = payment_service.get_user_payments(
+                    user_id=current_user.id,
+                    status=status,
+                    limit=limit,
+                    offset=offset
+                )
             else:
-                logger.error(f"Failed to get access token: {response.text}")
-                return None
+                # For admins, get all payments
+                # Note: You might want to add admin-specific logic here
+                result = payment_service.get_user_payments(
+                    user_id=current_user.id,
+                    status=status,
+                    limit=limit,
+                    offset=offset
+                )
+
+            payments_data = [payment.to_dict() for payment in result['payments']]
+
+            return jsonify({
+                'payments': payments_data,
+                'total': result['total'],
+                'limit': result['limit'],
+                'offset': result['offset']
+            }), 200
 
         except Exception as e:
-            logger.error(f"Error getting access token: {str(e)}")
-            return None
+            logger.error(f"Error getting payments: {str(e)}")
+            return jsonify({'error': 'Failed to get payments'}), 500
 
-    def initiate_stk_push(self, phone_number, amount, order_id, description="Payment"):
-        """Initiate STK Push payment"""
+    @staticmethod
+    def get_payment(current_user,payment_id):
+        """Get specific payment"""
         try:
-            access_token = self.get_access_token()
-            if not access_token:
-                raise Exception("Failed to get access token")
+            current_user = get_current_user()
+            if not current_user:
+                return jsonify({'error': 'Unauthorized'}), 401
 
-            # Format phone number (remove leading 0 if present and add 254)
-            if phone_number.startswith('0'):
-                phone_number = '254' + phone_number[1:]
-            elif phone_number.startswith('+254'):
-                phone_number = phone_number[1:]
-            elif not phone_number.startswith('254'):
-                phone_number = '254' + phone_number
+            payment_service = PaymentService()
+            payment = payment_service.get_payment_by_id(payment_id)
 
-            # Generate timestamp
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            if not payment:
+                return jsonify({'error': 'Payment not found'}), 404
 
-            # Generate password
-            password = base64.b64encode(
-                f"{self.shortcode}{self.passkey}{timestamp}".encode()
-            ).decode()
+            # Check if user owns the payment or is admin
+            if payment.user_id != current_user.id and current_user.role not in ['admin', 'brand_admin']:
+                return jsonify({'error': 'Unauthorized'}), 403
 
-            # Prepare payload
-            payload = {
-                "BusinessShortCode": self.shortcode,
-                "Password": password,
-                "Timestamp": timestamp,
-                "TransactionType": "CustomerPayBillOnline",
-                "Amount": str(int(amount)),  # Convert to integer string
-                "PartyA": phone_number,
-                "PartyB": self.shortcode,
-                "PhoneNumber": phone_number,
-                "CallBackURL": self.callback_url,
-                "AccountReference": f"ORDER{order_id}",
-                "TransactionDesc": description[:20]  # Max 20 chars
-            }
-
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Content-Type': 'application/json'
-            }
-
-            response = requests.post(
-                f'{self.base_url}/mpesa/stkpush/v1/processrequest',
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=30
-            )
-
-            if response.status_code == 200:
-                response_data = response.json()
-
-                if response_data.get('ResponseCode') == '0':
-                    logger.info(f"STK Push initiated for order {order_id}")
-                    return {
-                        'success': True,
-                        'MerchantRequestID': response_data.get('MerchantRequestID'),
-                        'CheckoutRequestID': response_data.get('CheckoutRequestID'),
-                        'ResponseCode': response_data.get('ResponseCode'),
-                        'ResponseDescription': response_data.get('ResponseDescription'),
-                        'CustomerMessage': response_data.get('CustomerMessage')
-                    }
-                else:
-                    error_msg = response_data.get('ResponseDescription', 'STK Push failed')
-                    logger.error(f"STK Push error: {error_msg}")
-                    raise Exception(error_msg)
-            else:
-                logger.error(f"STK Push request failed: {response.text}")
-                raise Exception(f"STK Push request failed: {response.status_code}")
+            return jsonify(payment.to_dict()), 200
 
         except Exception as e:
-            logger.error(f"Error initiating STK Push: {str(e)}")
-            raise
+            logger.error(f"Error getting payment: {str(e)}")
+            return jsonify({'error': 'Failed to get payment'}), 500
 
-    def check_payment_status(self, checkout_request_id):
-        """Query payment status"""
+    @staticmethod
+    def initiate_payment(current_user):
+        """Initiate a payment for an order"""
         try:
-            access_token = self.get_access_token()
-            if not access_token:
-                raise Exception("Failed to get access token")
+            current_user = get_current_user()
+            if not current_user:
+                return jsonify({'error': 'Unauthorized'}), 401
 
-            # Generate timestamp
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+            data = request.get_json()
 
-            # Generate password
-            password = base64.b64encode(
-                f"{self.shortcode}{self.passkey}{timestamp}".encode()
-            ).decode()
+            # Validate required fields
+            required_fields = ['order_id', 'payment_method', 'amount']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({'error': f'Missing required field: {field}'}), 400
 
-            payload = {
-                "BusinessShortCode": self.shortcode,
-                "Password": password,
-                "Timestamp": timestamp,
-                "CheckoutRequestID": checkout_request_id
-            }
+            # Get order
+            order = Order.query.get(data['order_id'])
+            if not order:
+                return jsonify({'error': 'Order not found'}), 404
 
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Content-Type': 'application/json'
-            }
+            # Check if user owns the order
+            if order.user_id != current_user.id:
+                return jsonify({'error': 'Unauthorized'}), 403
 
-            response = requests.post(
-                f'{self.base_url}/mpesa/stkpushquery/v1/query',
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=30
+            # Validate amount
+            if float(data['amount']) != float(order.total_amount):
+                return jsonify({'error': 'Payment amount must match order total'}), 400
+
+            payment_service = PaymentService()
+
+            # Create payment
+            payment = payment_service.create_payment(
+                order_id=data['order_id'],
+                amount=data['amount'],
+                payment_method=data['payment_method'],
+                phone_number=data.get('phone_number'),
+                metadata=data.get('metadata', {})
             )
 
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"Payment status check failed: {response.text}")
-                raise Exception("Failed to check payment status")
+            # If M-Pesa, initiate STK Push
+            if data['payment_method'] == 'mpesa' and 'phone_number' in data:
+                try:
+                    stk_response = payment_service.initiate_stk_push(
+                        phone_number=data['phone_number'],
+                        amount=data['amount'],
+                        order_id=data['order_id'],
+                        description=f"Payment for order #{order.order_number}"
+                    )
+
+                    return jsonify({
+                        'message': 'M-Pesa payment initiated',
+                        'payment': payment.to_dict(),
+                        'stk_push': stk_response
+                    }), 201
+                except Exception as stk_error:
+                    logger.error(f"STK Push failed: {str(stk_error)}")
+                    return jsonify({
+                        'error': f'Failed to initiate M-Pesa payment: {str(stk_error)}',
+                        'payment': payment.to_dict()
+                    }), 400
+
+            return jsonify({
+                'message': 'Payment created',
+                'payment': payment.to_dict()
+            }), 201
+
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error initiating payment: {str(e)}")
+            return jsonify({'error': 'Failed to initiate payment'}), 500
+
+    @staticmethod
+    def check_payment_status(current_user, payment_reference):
+        """Check payment status"""
+        try:
+            current_user = get_current_user()
+            if not current_user:
+                return jsonify({'error': 'Unauthorized'}), 401
+
+            payment_service = PaymentService()
+            payment = payment_service.get_payment_by_reference(payment_reference)
+
+            if not payment:
+                return jsonify({'error': 'Payment not found'}), 404
+
+            # Check if user owns the payment
+            if payment.user_id != current_user.id:
+                return jsonify({'error': 'Unauthorized'}), 403
+
+            # For M-Pesa payments, check status
+            if payment.payment_method == 'mpesa' and payment.checkout_request_id:
+                try:
+                    status_response = payment_service.check_payment_status(payment.checkout_request_id)
+
+                    # Get updated payment
+                    payment = payment_service.get_payment_by_id(payment.id)
+                    return jsonify({
+                        'payment': payment.to_dict(),
+                        'status_check': status_response
+                    }), 200
+                except Exception as status_error:
+                    logger.error(f"Status check failed: {str(status_error)}")
+                    # Still return payment data even if status check failed
+                    return jsonify({
+                        'payment': payment.to_dict(),
+                        'status_check_error': str(status_error)
+                    }), 200
+
+            return jsonify({'payment': payment.to_dict()}), 200
 
         except Exception as e:
             logger.error(f"Error checking payment status: {str(e)}")
-            raise
+            return jsonify({'error': 'Failed to check payment status'}), 500
 
-    def process_b2c_payment(self, phone_number, amount, remarks="Payment"):
-        """Process B2C payment (for refunds or payouts)"""
+    @staticmethod
+    def mpesa_callback(current_user):
+        """Handle M-Pesa STK Push callback"""
         try:
-            access_token = self.get_access_token()
-            if not access_token:
-                raise Exception("Failed to get access token")
+            data = request.get_json()
+            logger.info(f"📩 M-Pesa callback received: {json.dumps(data, indent=2)}")
 
-            # Format phone number
-            if phone_number.startswith('0'):
-                phone_number = '254' + phone_number[1:]
+            payment_service = PaymentService()
+            response = payment_service.process_mpesa_callback(data)
 
-            # Generate security credentials
-            initiator_password = os.getenv('MPESA_INITIATOR_PASSWORD', '')
-            security_credential = self.generate_security_credential(initiator_password)
-
-            payload = {
-                "InitiatorName": os.getenv('MPESA_INITIATOR_NAME', 'testapi'),
-                "SecurityCredential": security_credential,
-                "CommandID": "BusinessPayment",
-                "Amount": str(int(amount)),
-                "PartyA": self.shortcode,
-                "PartyB": phone_number,
-                "Remarks": remarks[:100],
-                "QueueTimeOutURL": os.getenv('MPESA_QUEUE_TIMEOUT_URL', 'https://your-domain.com/timeout'),
-                "ResultURL": os.getenv('MPESA_RESULT_URL', 'https://your-domain.com/result'),
-                "Occasion": ""
-            }
-
-            headers = {
-                'Authorization': f'Bearer {access_token}',
-                'Content-Type': 'application/json'
-            }
-
-            response = requests.post(
-                f'{self.base_url}/mpesa/b2c/v1/paymentrequest',
-                headers=headers,
-                data=json.dumps(payload),
-                timeout=30
-            )
-
-            if response.status_code == 200:
-                return response.json()
-            else:
-                logger.error(f"B2C payment failed: {response.text}")
-                raise Exception("B2C payment failed")
+            return jsonify(response), 200
 
         except Exception as e:
-            logger.error(f"Error processing B2C payment: {str(e)}")
-            raise
+            logger.error(f"❌ Error processing M-Pesa callback: {str(e)}")
+            return jsonify({"ResultCode": 1, "ResultDesc": "Internal server error"}), 500
 
-    def generate_security_credential(self, initiator_password):
-        """Generate security credential for B2C transactions"""
-        # This requires proper encryption with Safaricom's public key
-        # For sandbox, you can use plain password
-        # For production, implement proper RSA encryption
-        if self.env == 'sandbox':
-            return base64.b64encode(initiator_password.encode()).decode()
-        else:
-            # TODO: Implement RSA encryption for production
-            raise NotImplementedError("Production security credential generation not implemented")
+    @staticmethod
+    def process_refund(current_user, payment_id):
+        """Process payment refund (admin only)"""
+        try:
+            current_user = get_current_user()
+            if not current_user or current_user.role not in ['admin', 'brand_admin']:
+                return jsonify({'error': 'Unauthorized'}), 401
+
+            data = request.get_json()
+            required_fields = ['refund_amount', 'refund_reason']
+            for field in required_fields:
+                if field not in data:
+                    return jsonify({'error': f'Missing required field: {field}'}), 400
+
+            payment_service = PaymentService()
+            payment = payment_service.get_payment_by_id(payment_id)
+
+            if not payment:
+                return jsonify({'error': 'Payment not found'}), 404
+
+            # Validate refund amount
+            if float(data['refund_amount']) > payment.amount:
+                return jsonify({'error': 'Refund amount cannot exceed payment amount'}), 400
+
+            # Update payment with refund info
+            payment.refund_amount = float(data['refund_amount'])
+            payment.refund_reason = data['refund_reason']
+            payment.status = 'refunded'
+            payment.updated_at = datetime.utcnow()
+
+            # Update order status
+            order = Order.query.get(payment.order_id)
+            if order:
+                order.status = 'refunded'
+                order.updated_at = datetime.utcnow()
+
+            db.session.commit()
+
+            return jsonify({
+                'message': 'Refund processed successfully',
+                'payment': payment.to_dict()
+            }), 200
+
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        except Exception as e:
+            logger.error(f"Error processing refund: {str(e)}")
+            return jsonify({'error': 'Failed to process refund'}), 500
+
+    @staticmethod
+    def get_payment_stats(current_user):
+        """Get payment statistics"""
+        try:
+            current_user = get_current_user()
+            if not current_user:
+                return jsonify({'error': 'Unauthorized'}), 401
+
+            payment_service = PaymentService()
+
+            if current_user.role == 'customer':
+                user_payments = payment_service.get_user_payments(current_user.id)
+
+                stats = {
+                    'total_payments': user_payments['total'],
+                    'total_amount': sum(p.amount for p in user_payments['payments']),
+                    'successful_payments': sum(1 for p in user_payments['payments'] if p.status == 'completed'),
+                    'pending_payments': sum(1 for p in user_payments['payments'] if p.status == 'pending'),
+                    'failed_payments': sum(1 for p in user_payments['payments'] if p.status == 'failed')
+                }
+            else:
+                # For admins, get all payments stats
+                # Note: You might want to implement this differently for performance
+                all_payments = Payment.query.all()
+
+                stats = {
+                    'total_payments': len(all_payments),
+                    'total_amount': sum(p.amount for p in all_payments),
+                    'successful_payments': sum(1 for p in all_payments if p.status == 'completed'),
+                    'pending_payments': sum(1 for p in all_payments if p.status == 'pending'),
+                    'failed_payments': sum(1 for p in all_payments if p.status == 'failed'),
+                    'refunded_payments': sum(1 for p in all_payments if p.status == 'refunded')
+                }
+
+            return jsonify(stats), 200
+
+        except Exception as e:
+            logger.error(f"Error getting payment stats: {str(e)}")
+            return jsonify({'error': 'Failed to get payment statistics'}), 500

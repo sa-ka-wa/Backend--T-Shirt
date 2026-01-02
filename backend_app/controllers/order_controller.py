@@ -1,12 +1,10 @@
-from flask import request, jsonify
+from flask import request, jsonify, current_app
 from backend_app.extensions import db
 from backend_app.models.order import Order, OrderItem
 from backend_app.models.cart import Cart, CartItem
 from backend_app.models.product import Product
 from backend_app.services.order_service import OrderService
 from backend_app.services.payment_service import PaymentService
-from backend_app.utils.jwt_helper import get_current_user, get_current_user_id
-from backend_app.utils.brand_filter import brand_filtered_query
 from datetime import datetime
 import logging
 
@@ -15,13 +13,9 @@ logger = logging.getLogger(__name__)
 
 class OrderController:
     @staticmethod
-    def get_orders():
+    def get_orders(current_user):
         """Get all orders for current user or brand"""
         try:
-            current_user = get_current_user()
-            if not current_user:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             # Get query parameters
             status = request.args.get('status')
             limit = request.args.get('limit', 50, type=int)
@@ -53,8 +47,8 @@ class OrderController:
                     'offset': result['offset']
                 }), 200
 
-            # For platform admins, show all orders
-            elif current_user.role == 'admin':
+            # For platform admins (admin and super_admin), show all orders
+            elif current_user.role in ['admin', 'super_admin']:
                 result = OrderService.get_all_orders(
                     status=status,
                     limit=limit,
@@ -68,45 +62,49 @@ class OrderController:
                 }), 200
 
             else:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': f'Unauthorized role: {current_user.role}'}), 403
 
         except Exception as e:
             logger.error(f"Error getting orders: {str(e)}")
             return jsonify({'error': 'Failed to get orders'}), 500
 
     @staticmethod
-    def get_order(order_id):
+    def get_order(current_user, order_id):
         """Get specific order by ID"""
         try:
-            current_user = get_current_user()
-            if not current_user:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             order = OrderService.get_order_by_id(order_id)
             if not order:
                 return jsonify({'error': 'Order not found'}), 404
 
             # Check permissions
             if current_user.role == 'customer' and order.user_id != current_user.id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only view your own orders'}), 403
 
             if current_user.role in ['brand_admin', 'brand_staff'] and order.user.brand_id != current_user.brand_id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only view orders from your brand'}), 403
 
-            return jsonify(order.to_dict(include_items=True, include_payments=True)), 200
+            # admin and super_admin can view any order
+            if current_user.role in ['admin', 'super_admin']:
+                return jsonify(order.to_dict(include_items=True, include_payments=True)), 200
+
+            # For customer viewing their own order
+            if current_user.role == 'customer' and order.user_id == current_user.id:
+                return jsonify(order.to_dict(include_items=True, include_payments=True)), 200
+
+            # For brand admin/staff viewing their brand's order
+            if current_user.role in ['brand_admin', 'brand_staff'] and order.user.brand_id == current_user.brand_id:
+                return jsonify(order.to_dict(include_items=True, include_payments=True)), 200
+
+            return jsonify({'error': 'Unauthorized'}), 403
 
         except Exception as e:
             logger.error(f"Error getting order: {str(e)}")
             return jsonify({'error': 'Failed to get order'}), 500
 
     @staticmethod
-    def create_order():
+    def create_order(current_user):
         """Create a new order"""
         try:
-            current_user_id = get_current_user_id()
-            if not current_user_id:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             data = request.get_json()
 
             # Validate required fields
@@ -119,7 +117,7 @@ class OrderController:
             if 'items' in data:
                 # Create direct order
                 order = OrderService.create_direct_order(
-                    user_id=current_user_id,
+                    user_id=current_user.id,
                     items_data=data['items'],
                     shipping_data=data['shipping_address'],
                     billing_data=data.get('billing_address'),
@@ -128,7 +126,7 @@ class OrderController:
             else:
                 # Create order from cart
                 order = OrderService.create_order_from_cart(
-                    user_id=current_user_id,
+                    user_id=current_user.id,
                     shipping_data=data['shipping_address'],
                     billing_data=data.get('billing_address'),
                     notes=data.get('notes', '')
@@ -146,13 +144,9 @@ class OrderController:
             return jsonify({'error': 'Failed to create order'}), 500
 
     @staticmethod
-    def update_order_status(order_id):
+    def update_order_status(current_user, order_id):
         """Update order status"""
         try:
-            current_user = get_current_user()
-            if not current_user:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             data = request.get_json()
             if 'status' not in data:
                 return jsonify({'error': 'Missing status field'}), 400
@@ -163,14 +157,22 @@ class OrderController:
 
             # Check permissions
             if current_user.role == 'customer' and order.user_id != current_user.id:
-                return jsonify({'error': 'Unauthorized'}), 403
-
-            # Only brand admins/staff or platform admins can update status
-            if current_user.role not in ['brand_admin', 'brand_staff', 'admin']:
-                return jsonify({'error': 'Insufficient permissions'}), 403
+                return jsonify({'error': 'Unauthorized - can only update your own orders'}), 403
 
             if current_user.role in ['brand_admin', 'brand_staff'] and order.user.brand_id != current_user.brand_id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only update orders from your brand'}), 403
+
+            # Customers can only update their own pending orders to cancelled
+            if current_user.role == 'customer':
+                if data['status'] != 'cancelled':
+                    return jsonify({'error': 'Customers can only cancel orders'}), 403
+                if order.status != 'pending':
+                    return jsonify({'error': 'Only pending orders can be cancelled'}), 400
+
+            # Check if user has permission to update status
+            allowed_roles = ['admin', 'super_admin', 'brand_admin', 'brand_staff']
+            if current_user.role not in allowed_roles and current_user.role != 'customer':
+                return jsonify({'error': 'Insufficient permissions'}), 403
 
             order = OrderService.update_order_status(
                 order_id,
@@ -190,13 +192,9 @@ class OrderController:
             return jsonify({'error': 'Failed to update order status'}), 500
 
     @staticmethod
-    def cancel_order(order_id):
+    def cancel_order(current_user, order_id):
         """Cancel an order"""
         try:
-            current_user = get_current_user()
-            if not current_user:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             data = request.get_json()
 
             order = OrderService.get_order_by_id(order_id)
@@ -205,14 +203,14 @@ class OrderController:
 
             # Check permissions
             if current_user.role == 'customer' and order.user_id != current_user.id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only cancel your own orders'}), 403
 
             if current_user.role in ['brand_admin', 'brand_staff'] and order.user.brand_id != current_user.brand_id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only cancel orders from your brand'}), 403
 
             # Customers can only cancel pending orders
             if current_user.role == 'customer' and order.status != 'pending':
-                return jsonify({'error': 'Only pending orders can be cancelled'}), 400
+                return jsonify({'error': 'Only pending orders can be cancelled by customers'}), 400
 
             order = OrderService.update_order_status(
                 order_id,
@@ -232,13 +230,9 @@ class OrderController:
             return jsonify({'error': 'Failed to cancel order'}), 500
 
     @staticmethod
-    def update_shipping_info(order_id):
+    def update_shipping_info(current_user, order_id):
         """Update shipping information"""
         try:
-            current_user = get_current_user()
-            if not current_user:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             data = request.get_json()
             if 'shipping_info' not in data:
                 return jsonify({'error': 'Missing shipping_info field'}), 400
@@ -249,10 +243,10 @@ class OrderController:
 
             # Check permissions
             if current_user.role == 'customer' and order.user_id != current_user.id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only update your own orders'}), 403
 
             if current_user.role in ['brand_admin', 'brand_staff'] and order.user.brand_id != current_user.brand_id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only update orders from your brand'}), 403
 
             # Only pending orders can have shipping info updated
             if order.status != 'pending':
@@ -272,13 +266,9 @@ class OrderController:
             return jsonify({'error': 'Failed to update shipping info'}), 500
 
     @staticmethod
-    def add_tracking_info(order_id):
+    def add_tracking_info(current_user, order_id):
         """Add tracking information"""
         try:
-            current_user = get_current_user()
-            if not current_user or current_user.role not in ['brand_admin', 'brand_staff', 'admin']:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             data = request.get_json()
             required_fields = ['tracking_number', 'carrier']
             for field in required_fields:
@@ -289,9 +279,13 @@ class OrderController:
             if not order:
                 return jsonify({'error': 'Order not found'}), 404
 
-            # Check brand permissions
+            # Check permissions
             if current_user.role in ['brand_admin', 'brand_staff'] and order.user.brand_id != current_user.brand_id:
-                return jsonify({'error': 'Unauthorized'}), 403
+                return jsonify({'error': 'Unauthorized - can only update orders from your brand'}), 403
+
+            # Only admin/super_admin/brand_admin/brand_staff can add tracking
+            if current_user.role not in ['super_admin', 'admin', 'brand_admin', 'brand_staff']:
+                return jsonify({'error': 'Unauthorized - tracking info can only be added by staff'}), 403
 
             order = OrderService.add_tracking_info(
                 order_id,
@@ -312,13 +306,9 @@ class OrderController:
             return jsonify({'error': 'Failed to add tracking info'}), 500
 
     @staticmethod
-    def get_order_stats():
+    def get_order_stats(current_user):
         """Get order statistics"""
         try:
-            current_user = get_current_user()
-            if not current_user:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             # Get query parameters
             start_date = request.args.get('start_date')
             end_date = request.args.get('end_date')
@@ -345,13 +335,9 @@ class OrderController:
             return jsonify({'error': 'Failed to get order statistics'}), 500
 
     @staticmethod
-    def search_orders():
+    def search_orders(current_user):
         """Search orders"""
         try:
-            current_user = get_current_user()
-            if not current_user:
-                return jsonify({'error': 'Unauthorized'}), 401
-
             search_term = request.args.get('q')
             if not search_term:
                 return jsonify({'error': 'Missing search term'}), 400

@@ -8,43 +8,43 @@ payment_bp = Blueprint('payment', __name__)
 # Get all payments
 @payment_bp.route('/', methods=['GET'])
 @token_required
-def get_payments():
-    return PaymentController.get_payments()
+def get_payments(current_user):
+    return PaymentController.get_payments(current_user)
 
 
 # Get payment statistics
 @payment_bp.route('/stats', methods=['GET'])
 @token_required
-def get_payment_stats():
-    return PaymentController.get_payment_stats()
+def get_payment_stats(current_user):
+    return PaymentController.get_payment_stats(current_user)
 
 
 # Get specific payment
 @payment_bp.route('/<int:payment_id>', methods=['GET'])
 @token_required
-def get_payment(payment_id):
-    return PaymentController.get_payment(payment_id)
+def get_payment(current_user, payment_id):
+    return PaymentController.get_payment(current_user, payment_id)
 
 
 # Initiate payment
 @payment_bp.route('/initiate', methods=['POST'])
 @token_required
-def initiate_payment():
-    return PaymentController.initiate_payment()
+def initiate_payment(current_user):
+    return PaymentController.initiate_payment(current_user)
 
 
 # Check payment status
 @payment_bp.route('/status/<string:payment_reference>', methods=['GET'])
 @token_required
-def check_payment_status(payment_reference):
-    return PaymentController.check_payment_status(payment_reference)
+def check_payment_status(current_user, payment_reference):
+    return PaymentController.check_payment_status(current_user, payment_reference)
 
 
 # Process refund
 @payment_bp.route('/<int:payment_id>/refund', methods=['POST'])
 @token_required
-def process_refund(payment_id):
-    return PaymentController.process_refund(payment_id)
+def process_refund(current_user, payment_id):
+    return PaymentController.process_refund(current_user,payment_id)
 
 
 # M-Pesa callback (no auth required)
@@ -56,8 +56,8 @@ def mpesa_callback():
 # M-Pesa STK Push
 @payment_bp.route('/mpesa/stk-push', methods=['POST'])
 @token_required
-def mpesa_stk_push():
-    return PaymentController.initiate_payment()
+def mpesa_stk_push(current_user):
+    return PaymentController.initiate_payment(current_user)
 
 
 # Test payment endpoint (for development)
