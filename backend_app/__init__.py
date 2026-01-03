@@ -30,10 +30,12 @@ def create_app(config_class=Config):
                 "http://localhost:3001",
                 "http://localhost:3002",
                 "http://localhost:3003",
-                "http://localhost:5173"
+                "http://localhost:5173",
+                "http://*.lvh.me:3002",
+                "http://lvh.me:3002"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "X-Session-Id"],
             "expose_headers": ["Content-Type", "Authorization"],
             "supports_credentials": True,
             "max_age": 86400  # Cache preflight for 24 hours

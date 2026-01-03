@@ -1,3 +1,4 @@
+
 # backend_app/services/cart_service.py
 from backend_app.extensions import db
 from backend_app.models.cart import Cart, CartItem
@@ -137,3 +138,4 @@ class CartService:
         db.session.delete(guest_cart)
         db.session.commit()
         return user_cart, 'Carts merged successfully'
+
