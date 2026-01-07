@@ -33,8 +33,7 @@ class Product(db.Model):
     brand = db.relationship("Brand", back_populates="products")
 
     # Order relationship
-    orders = db.relationship("Order", back_populates="product", cascade="all, delete-orphan")
-
+    order_items = db.relationship('OrderItem', back_populates='product', cascade='all, delete-orphan')
     def to_dict(self):
         return {
             'id': self.id,

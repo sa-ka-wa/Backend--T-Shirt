@@ -24,18 +24,22 @@ def create_app(config_class=Config):
                 "http://prolific.lvh.me:3004",
                 "http://lvh.me:3003",
                 "http://doktari.lvh.me:3002",
+                "http://doktari.lvh.me:3003",  # Add this line
+                "https://doktari-frontend.vercel.app",
                 "http://admin.lvh.me:3001",
                 "http://user.lvh.me:3003",
                 "http://localhost:3001",
                 "http://localhost:3002",
                 "http://localhost:3003",
-                "http://localhost:5173"
+                "http://localhost:5173",
+                "http://*.lvh.me:3002",
+                "http://lvh.me:3002"
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With"],
+            "allow_headers": ["Content-Type", "Authorization", "X-Requested-With", "X-Session-Id"],
             "expose_headers": ["Content-Type", "Authorization"],
             "supports_credentials": True,
-            "max_age": 86400  # Cache preflight for 24 hours
+            "max_age": 86400
         }
     })
 
