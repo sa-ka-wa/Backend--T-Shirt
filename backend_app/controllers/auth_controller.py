@@ -1,6 +1,7 @@
-from flask import request, jsonify, redirect
+from flask import request, jsonify, redirect, url_for
 from backend_app.extensions import db
 from backend_app.models.user import User
+from backend_app.models.brand import Brand
 from backend_app.controllers.user_controller import UserController
 from backend_app.services.auth_service import AuthService
 from backend_app.utils.jwt_helper import get_jwt_identity, generate_token
@@ -8,6 +9,12 @@ import requests
 from oauthlib.oauth2 import WebApplicationClient
 import os
 import json
+import uuid
+
+# Ensure oauthlib will allow HTTP in development (useful for local testing)
+# Accept either FLASK_ENV=development or explicit OAUTHLIB_INSECURE_TRANSPORT in env/.env
+if os.environ.get("FLASK_ENV", "").lower() == "development" or os.environ.get("OAUTHLIB_INSECURE_TRANSPORT") == "1":
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
 
 class AuthController:
@@ -82,90 +89,91 @@ class AuthController:
     # ✅ NEW: Google OAuth Login
     @staticmethod
     def google_login():
-        try:
-            # Get Google's OAuth 2.0 endpoints
-            google_provider_cfg = requests.get(AuthController.GOOGLE_DISCOVERY_URL).json()
-            authorization_endpoint = google_provider_cfg["authorization_endpoint"]
+        """
+        Redirects the user to Google's OAuth consent screen.
+        Optionally accepts ?redirect_to=<frontend URL> to send user after login.
+        """
+        google_provider_cfg = requests.get(AuthController.GOOGLE_DISCOVERY_URL).json()
+        authorization_endpoint = google_provider_cfg["authorization_endpoint"]
 
-            # Prepare request URI
-            request_uri = AuthController.client.prepare_request_uri(
-                authorization_endpoint,
-                redirect_uri=request.host_url + "api/auth/google/callback",
-                scope=["openid", "email", "profile"],
-            )
-            return redirect(request_uri)
-        except Exception as e:
-            return jsonify({"error": f"Google OAuth configuration failed: {str(e)}"}), 500
+        redirect_uri = url_for("auth.google_callback", _external=True)
+        request_uri = AuthController.client.prepare_request_uri(
+            authorization_endpoint,
+            redirect_uri=redirect_uri,
+            scope=["openid", "email", "profile"],
+        )
+        return redirect(request_uri)
 
-    # ✅ NEW: Google OAuth Callback
     @staticmethod
     def google_auth_callback():
+        """
+        Handles the callback from Google after login.
+        Exchanges code for token, fetches user info, creates user if new,
+        then redirects to frontend callback with JWT in fragment.
+        """
         try:
-            # Get authorization code Google sent back
             code = request.args.get("code")
-
             if not code:
-                return jsonify({"error": "Authorization code missing"}), 400
+                return {"error": "Authorization code missing"}, 400
 
-            # Exchange code for tokens
+            # Fetch Google endpoints
             google_provider_cfg = requests.get(AuthController.GOOGLE_DISCOVERY_URL).json()
             token_endpoint = google_provider_cfg["token_endpoint"]
-
-            token_url, headers, body = AuthController.client.prepare_token_request(
-                token_endpoint,
-                authorization_response=request.url,
-                redirect_url=request.base_url,
-                code=code
-            )
-
-            token_response = requests.post(
-                token_url,
-                headers=headers,
-                data=body,
-                auth=(AuthController.GOOGLE_CLIENT_ID, AuthController.GOOGLE_CLIENT_SECRET),
-            )
-
-            if token_response.status_code != 200:
-                return jsonify({"error": "Failed to get tokens from Google"}), 400
-
-            # Parse the tokens
-            AuthController.client.parse_request_body_response(token_response.text)
-
-            # Get user info from Google
             userinfo_endpoint = google_provider_cfg["userinfo_endpoint"]
-            uri, headers, body = AuthController.client.add_token(userinfo_endpoint)
-            userinfo_response = requests.get(uri, headers=headers, data=body)
 
+            # Same redirect URI used for both auth and token
+            redirect_uri = url_for("auth.google_callback", _external=True)
+
+            # Exchange code for tokens
+            token_data = {
+                "code": code,
+                "client_id": AuthController.GOOGLE_CLIENT_ID,
+                "client_secret": AuthController.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": redirect_uri,
+                "grant_type": "authorization_code",
+            }
+            token_headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            token_response = requests.post(token_endpoint, data=token_data, headers=token_headers)
+            if token_response.status_code != 200:
+                return {"error": "Failed to exchange code for token", "details": token_response.json()}, 400
+
+            tokens = token_response.json()
+            access_token = tokens.get("access_token")
+            if not access_token:
+                return {"error": "No access_token received", "details": tokens}, 400
+
+            # Fetch user info
+            userinfo_response = requests.get(userinfo_endpoint, headers={"Authorization": f"Bearer {access_token}"})
             if userinfo_response.status_code != 200:
-                return jsonify({"error": "Failed to get user info from Google"}), 400
+                return {"error": "Failed to get user info", "details": userinfo_response.text}, 400
 
             userinfo = userinfo_response.json()
+            email = userinfo["email"]
+            name = userinfo.get("given_name", email.split("@")[0])
 
-            if userinfo.get("email_verified"):
-                users_email = userinfo["email"]
-                users_name = userinfo.get("given_name", users_email.split('@')[0])
+            # Create or get user
+            user = User.query.filter_by(email=email).first()
+            if not user:
+                brand = Brand.query.first()  # fallback brand
+                user = User(
+                    email=email,
+                    name=name,
+                    role="customer",
+                    brand_id=brand.id if brand else None
+                )
+                # Random password for Google users
+                user.set_password(uuid.uuid4().hex)
+                db.session.add(user)
+                db.session.commit()
 
-                # Create or get user from database
-                user = User.query.filter_by(email=users_email).first()
-                if not user:
-                    user = User(
-                        email=users_email,
-                        username=users_name,
-                        password_hash=None,  # Google users don't need password
-                        role='customer'
-                    )
-                    db.session.add(user)
-                    db.session.commit()
+            # Generate JWT
+            token = generate_token(user.id)
 
-                # Generate JWT token
-                token = generate_token(user.id)
-                return jsonify({
-                    "message": "Google login successful",
-                    "token": token,
-                    "user": user.to_dict()
-                }), 200
-            else:
-                return jsonify({"error": "Google email not verified"}), 400
+            # Redirect frontend to /auth/callback with token in fragment
+            frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+            target = f"{frontend_url.rstrip('/')}/auth/callback#token={token}"
+
+            return redirect(target)
 
         except Exception as e:
-            return jsonify({"error": f"Google authentication failed: {str(e)}"}), 400
+            return {"error": f"Google authentication failed: {str(e)}"}, 400
