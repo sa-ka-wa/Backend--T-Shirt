@@ -108,8 +108,7 @@ class AuthController:
     def google_auth_callback():
         """
         Handles the callback from Google after login.
-        Exchanges code for token, fetches user info, creates user if new,
-        then redirects to frontend callback with JWT in fragment.
+        Uses query parameters instead of hash fragments for better compatibility.
         """
         try:
             code = request.args.get("code")
@@ -166,14 +165,29 @@ class AuthController:
                 db.session.add(user)
                 db.session.commit()
 
-            # Generate JWT
-            token = generate_token(user.id)
+            # Generate JWT - IMPORTANT: Convert user.id to string
+            user_id_str = str(user.id)
+            token = generate_token(user_id_str)
 
-            # Redirect frontend to /auth/callback with token in fragment
-            frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:3000")
-            target = f"{frontend_url.rstrip('/')}/auth/callback#token={token}"
+            # ✅ CRITICAL FIX: Use query parameters instead of hash fragment
+            # This works better with Vercel/React Router
+            frontend_url = os.environ.get("FRONTEND_URL", "https://doktari-frontend.vercel.app")
 
-            return redirect(target)
+            # Use query parameters for better compatibility
+            target = f"{frontend_url.rstrip('/')}/auth/callback?token={token}"
+
+            # Add cache control headers
+            response = redirect(target)
+            response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+            response.headers['Pragma'] = 'no-cache'
+
+            print(f"✅ Google OAuth successful for user: {email}")
+            print(f"✅ Redirecting to: {target}")
+
+            return response
 
         except Exception as e:
+            print(f"❌ Google authentication failed: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return {"error": f"Google authentication failed: {str(e)}"}, 400
