@@ -16,10 +16,10 @@ class CartController:
         response = jsonify(cart.to_dict())
 
         # Set session cookie for guest users
-        if not current_user:
+        if not current_user and cart.session_id:
             response.set_cookie(
                 'session_id',
-                cart.session_id,
+                str(cart.session_id),  # ensure it's a string
                 max_age=30 * 24 * 60 * 60,  # 30 days
                 httponly=True,
                 samesite='Lax'
@@ -58,8 +58,8 @@ class CartController:
         if not current_user and cart.session_id:
             response.set_cookie(
                 'session_id',
-                cart.session_id,
-                max_age=30 * 24 * 60 * 60,
+                str(cart.session_id),  # ensure it's a string
+                max_age=30 * 24 * 60 * 60,  # 30 days
                 httponly=True,
                 samesite='Lax'
             )
