@@ -174,7 +174,7 @@ class AuthController:
             frontend_url = os.environ.get("FRONTEND_URL", "https://doktari-frontend.vercel.app")
 
             # Use query parameters for better compatibility
-            target = f"{frontend_url.rstrip('/')}/auth/callback?token={token}"
+            target = f"{frontend_url.rstrip('/')}/#/auth/callback?token={token}"
 
             # Add cache control headers
             response = redirect(target)
