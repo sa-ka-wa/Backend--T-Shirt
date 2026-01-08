@@ -99,8 +99,11 @@ def generate_token(identity, additional_claims=None):
     if additional_claims is None:
         additional_claims = {}
 
-    return create_access_token(identity=identity, additional_claims=additional_claims)
+    # ✅ CRITICAL FIX: Ensure identity is a string
+    if not isinstance(identity, str):
+        identity = str(identity)
 
+    return create_access_token(identity=identity, additional_claims=additional_claims)
 
 # Optional: Add a specific decorator for cart endpoints that handles both authenticated and guest users
 def cart_token_optional(f):
